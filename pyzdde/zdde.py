@@ -29,6 +29,7 @@ import re as _re
 import shutil as _shutil
 import warnings as _warnings
 import codecs as _codecs
+import pandas as pd
 
 # Try to import IPython if it is available (for notebook helper functions)
 try:
@@ -6529,7 +6530,7 @@ class PyZDDE(object):
     # Editor function for both getting and setting parameters
     # -------------------------------------------------------
     def zGetOperandRow(self, row):
-        """Returns a row of the Multi Function Editor
+        """Returns a row of the Merit Function Editor
 
         Parameters
         ----------
@@ -6638,6 +6639,155 @@ class PyZDDE(object):
             if val is not None:
                 self.zSetOperand(row=row, column=i+12, value=val)
         return self.zGetOperandRow(row)
+
+    def zGetOperandRowList(self, row_numbers=[]):
+        """Gets a list of rows currently in the Merit Function Editor.
+           List elements are each returned as for zGetOperandRow.
+
+        Parameters
+        ----------
+        row_numbers : list of int
+            The row numbers for which to return the merit function operands. Default is [], which returns all rows.
+
+        Returns
+        -------
+        List of named tuple of OperandData having the following entries:
+        opertype : string
+            operand type, column 1 in MFE
+        int1 : integer or string 
+            column 2 in MFE. The column 2 is a string, usually when opertype 
+            is 'BLNK', and there is some comments in the second column 
+        int2 : integer
+            column 3 in MFE
+        data1 : float
+            column 4 in MFE
+        data2 : float
+            column 5 in MFE
+        data3 : float
+            column 6 in MFE
+        data4 : float
+            column 7 in MFE
+        data5 : float
+            column 12 in MFE
+        data6 : float
+            column 13 in MFE
+        tgt : float
+            target
+        wgt : float
+            weight
+        value : float
+            value of the operand calculation
+        percentage : float
+            percentage contribution of the operand to the total merif function
+
+        See Also
+        --------
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO()             
+        """
+        mfe_data = []
+        if row_numbers:
+            for row in row_numbers:
+                mfe_data.append(self.zGetOperandRow(row))
+        else:
+            row = 1
+            operand_data = self.zGetOperandRow(row)
+            while operand_data.opertype != -1:
+                mfe_data.append(operand_data)
+                row += 1
+                operand_data = self.zGetOperandRow(row)
+        return mfe_data
+
+
+    def zGetOperandDataFrame(self, row_numbers=[]):
+        """Gets a list of rows currently in the Merit Function Editor as for zGetOperandRowList(), except as a pandas Dataframe.
+
+        Parameters
+        ----------
+        row_numbers : list of int
+            The row numbers for which to return the merit function operands. Default is [], which returns all rows.
+
+        Returns
+        -------
+        A pandas DataFrame with the following columns:
+        opertype : string
+            operand type, column 1 in MFE
+        int1 : integer or string 
+            column 2 in MFE. The column 2 is a string, usually when opertype 
+            is 'BLNK', and there is some comments in the second column 
+        int2 : integer
+            column 3 in MFE
+        data1 : float
+            column 4 in MFE
+        data2 : float
+            column 5 in MFE
+        data3 : float
+            column 6 in MFE
+        data4 : float
+            column 7 in MFE
+        data5 : float
+            column 12 in MFE
+        data6 : float
+            column 13 in MFE
+        tgt : float
+            target
+        wgt : float
+            weight
+        value : float
+            value of the operand calculation
+        percentage : float
+            percentage contribution of the operand to the total merif function
+
+        See Also
+        --------
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO()
+        """
+
+        mfe_data = self.zGetOperandRowList(row_numbers=row_numbers)
+        if not row_numbers:
+            row_numbers = range(1, len(mfe_data)+1)
+        mfe_df = pd.DataFrame(mfe_data, index=row_numbers)
+        return mfe_df
+
+    def zGetOperandCount(self):
+        """ Get the number of operands in the current Merit Function
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        nmfo : int
+            Total number of operands in the current merit function (MFE)
+
+        See Also
+        --------
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), zGetOperandList(), zGetOperandDataFrame()            
+        """
+        nmfo = self.zInsertMFO(1)
+        nmfo = self.zDeleteMFO(1)
+        return nmfo
+
+    def zDeleteAllMFO(self):
+        """Delete all operands in the current Merit Function (clear the merit function editor).
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+
+        See Also
+        --------
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), zGetOperandList(), zGetOperandDataFrame()      
+
+        """
+        while self.zDeleteMFO(1) > 1:
+            pass
+        self.zSetOperand(1, 1, 'BLNK')
+
 
     # -------------------
     # System functions
