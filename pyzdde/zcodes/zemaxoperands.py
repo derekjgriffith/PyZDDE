@@ -762,7 +762,7 @@ class _Operands(object):
     }
 
 def showZOperandList(operandType = 0):
-    """Lists the operands for the specified type with a shot description of
+    """Lists the operands for the specified type with a short description of
     each operand.
 
     showZOperandList([operandType])->None (the operands are printed on screen)
@@ -978,8 +978,8 @@ if __name__ == '__main__':
     #Test getZOperandCount()
     print("Total number of operands:",getZOperandCount(0))
     #Test isZOperand()
-    print("'TSDX' is a Tolerence oprand type (True/False):", isZOperand('TSDX',2))
-    print("'TSDX' is an Oprimization oprand type (True/False):", isZOperand('TSDX',1))
+    print("'TSDX' is a Tolerence operand type (True/False):", isZOperand('TSDX',2))
+    print("'TSDX' is an Optimization operand type (True/False):", isZOperand('TSDX',1))
     print("'RANDOM' is a Tolerence operand type (True/False):", isZOperand('RANDOM',2))
     print("'PUCN' is a Multi-configuration operand type (True/False):", isZOperand('PUCN',3))
     print("'GQPO' is a ZEMAX operand (True/False):", isZOperand('GQPO',0))
