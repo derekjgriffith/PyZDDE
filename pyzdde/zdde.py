@@ -6640,7 +6640,7 @@ class PyZDDE(object):
                 self.zSetOperand(row=row, column=i+12, value=val)
         return self.zGetOperandRow(row)
 
-    def zGetOperandRowList(self, row_numbers=[]):
+    def zGetOperandRowList(self, row_numbers=[], update=True):
         """Gets a list of rows currently in the Merit Function Editor.
            List elements are each returned as for zGetOperandRow.
 
@@ -6648,6 +6648,9 @@ class PyZDDE(object):
         ----------
         row_numbers : list of int
             The row numbers for which to return the merit function operands. Default is [], which returns all rows.
+        update : boolean
+            If set True, the merit function calculation will be updated using zOptimize(-1) before the MF data is retrieved.
+            If set False, the MF is not updated prior to retrieval. The default is True (update the MF).
 
         Returns
         -------
@@ -6685,6 +6688,8 @@ class PyZDDE(object):
         zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO()             
         """
         mfe_data = []
+        if update:  # Update the merit function by calling zOptimize with -1 cycles
+            self.zOptimize(-1)
         if row_numbers:
             for row in row_numbers:
                 mfe_data.append(self.zGetOperandRow(row))
@@ -6698,13 +6703,16 @@ class PyZDDE(object):
         return mfe_data
 
 
-    def zGetOperandDataFrame(self, row_numbers=[]):
+    def zGetOperandDataFrame(self, row_numbers=[], update=True):
         """Gets a list of rows currently in the Merit Function Editor as for zGetOperandRowList(), except as a pandas Dataframe.
 
         Parameters
         ----------
         row_numbers : list of int
             The row numbers for which to return the merit function operands. Default is [], which returns all rows.
+        update : boolean
+            If set True, the merit function calculation will be updated using zOptimize(-1) before the MF data is retrieved.
+            If set False, the MF is not updated prior to retrieval. The default is True (update the MF).
 
         Returns
         -------
@@ -6741,8 +6749,7 @@ class PyZDDE(object):
         --------
         zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO()
         """
-
-        mfe_data = self.zGetOperandRowList(row_numbers=row_numbers)
+        mfe_data = self.zGetOperandRowList(row_numbers=row_numbers, update=update)
         if not row_numbers:
             row_numbers = range(1, len(mfe_data)+1)
         mfe_df = pd.DataFrame(mfe_data, index=row_numbers)
@@ -6762,7 +6769,8 @@ class PyZDDE(object):
 
         See Also
         --------
-        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), zGetOperandList(), zGetOperandDataFrame()            
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), 
+        zGetOperandList(), zGetOperandDataFrame()            
         """
         nmfo = self.zInsertMFO(1)
         nmfo = self.zDeleteMFO(1)
@@ -6781,12 +6789,42 @@ class PyZDDE(object):
 
         See Also
         --------
-        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), zGetOperandList(), zGetOperandDataFrame()      
+        zGetOperand(), zGetOperandRow(), zSetOperandRow(), zInsertMFO(), zDeleteMFO(), 
+        zGetOperandList(), zGetOperandDataFrame()      
 
         """
         while self.zDeleteMFO(1) > 1:
             pass
-        self.zSetOperand(1, 1, 'BLNK')
+        self.zSetOperandRow(row=1, opertype='BLNK', int1=0, int2=0, data1=0.0, data2=0.0, data3=0.0, 
+                            data4=0.0, data5=0.0, data6=0.0, tgt=0.0, wgt=0.0 )
+        # Update the (empty) merit function (does not seem to work?)
+        self.zOptimize(-1)
+
+    def zDeleteDefaultMFO(self):
+        """Delete all merit function operands below the DMFS (Default Merit Function Start) marker operand.
+           This effectively removes all the default (wizard-generated) optimization operands.
+           The DMFS operand itself is not removed.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        i_dmfs : int
+            The operand number of the DMFS operand that was found.
+            Returns 0 if no DMFS operand was found.
+        """
+        mfd = self.zGetOperandRowList(update=False)
+        opertypes = [op.opertype for op in mfd]  # Get a list of the operand types
+        # Search the list for the first DMFS operand
+        try:
+            i_dmfs = opertypes.index('DMFS') + 1
+            for i_oper in range(len(mfd), i_dmfs, -1):
+                self.zDeleteMFO(i_oper)            
+        except ValueError:  # Not found
+            i_dmfs = 0
+        return i_dmfs
 
 
     # -------------------
