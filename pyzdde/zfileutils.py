@@ -907,6 +907,7 @@ def checkDecimalSeparators(string):
 
 class DetectorData(object):
     """Class to represent contents of a Zemax detector data file. Requires numpy.
+       Reads files of Zemax formats .ddr, .ddc, .ddp and .ddv.
     """
     def __init__(self):
         self.version = None
@@ -963,15 +964,29 @@ class DetectorData(object):
             angular detector.
             d_data[0], d_data[1]: x half width of the detector, the y half width of the detector.
             d_data[2] - d_data[5]: angular x minimum, x maximum, y minimum, y maximum.
+        Pixel Data for Rectangle Detectors
+            inc_int_pos, inc_int_ang, coh_real, coh_imag, coh_amp : array of float
+                These are the incoherent flux in position space, the incoherent flux in angle space, and the
+                coherent real, imaginary, and summed amplitude in position space, respectively 
+        Pixel Data for Color Detectors
+            pos_P, pos_X, pos_Y, pos_Z, ang_P, ang_X, ang_Y, ang_Z: array of float
+                The first four are the position space power, tristimulus X, Y, and Z values, and the same 4 values
+                for angle space.             
 
         Data for Detector Polar Objects:
             i_data[0], i_data[1]: number of polar pixels, number of angular pixels.
             i_data[3]: number of rays striking the detector.
             d_data[0], d_data[1]: maximum angle of the detector, radial size of the detector.
+        Pixel Data for Polar Detectors
+            ang_P, ang_X, ang_Y, ang_Z 
+                These are the angular space power, tristimulus X, Y, and Z values.           
 
         Data for Detector Volume Objects:
             i_data[0] - i_data[2]: number of x, y, and z direction pixels.
             d_data[0] - d_data[2]: half width of the detector in the x, y, and z directions, respectively.
+        Pixel Data for Detector Volume Objects:
+            inc_int_pos, inc_absorbed_flux : array of float
+                These are the incoherent incident flux and the absorbed flux per voxel.
 
         Notes
         -----
