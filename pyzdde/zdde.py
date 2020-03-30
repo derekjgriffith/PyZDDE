@@ -6827,6 +6827,27 @@ class PyZDDE(object):
             i_dmfs = 0
         return i_dmfs
 
+    def zFindDefaultMFO(self):
+        """Find the DMFS marker operand (Default Merit Function Start)
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        i_dmfs : int
+            The operand number of the DMFS operand that was found.
+            Returns 0 if no DMFS operand was found.
+        """
+        mfd = self.zGetOperandRowList(update=False)
+        opertypes = [op.opertype for op in mfd]  # Get a list of the operand types
+        # Search the list for the first DMFS operand
+        try:
+            i_dmfs = opertypes.index('DMFS') + 1         
+        except ValueError:  # Not found
+            i_dmfs = 0
+        return i_dmfs        
 
     # -------------------
     # System functions
