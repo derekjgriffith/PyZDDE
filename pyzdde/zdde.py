@@ -5674,7 +5674,8 @@ class PyZDDE(object):
                 print("Not a valid operand in zSetOperand().")
                 return -1
         elif column in (2,3):
-            value = '{}'.format(int(float(value)))
+            if not isinstance(value, str):
+                value = '{}'.format(int(float(value)))
         else:
             value = '{}'.format(float(value))
         cmd = "SetOperand,{:d},{:d},{}".format(row, column, value)
