@@ -16,8 +16,10 @@ import collections as _co
 import ctypes as _ctypes
 from struct import unpack as _unpack
 from struct import pack as _pack
+from struct import calcsize as _calcsize
 import math as _math
 import re as _re
+import warnings
 
 import pyzdde.config as _config
 _global_pyver3 = _config._global_pyver3
@@ -39,7 +41,7 @@ class ZemaxRay():
     
     """
     def __init__(self, parent = None):      
-        self.file_type = '';
+        self.file_type = ''
         self.status = []
         self.level = []
         self.hit_object = []
@@ -71,7 +73,7 @@ class ZemaxRay():
         self.eyi = []
         self.ezr = []
         self.ezi = []
-        self.wavelength = 0;
+        self.wavelength = 0
         self.zrd_type = 0
         self.zrd_version = 0
         self.n_segments = 1  # not being used
@@ -163,7 +165,7 @@ class ZemaxRay():
             fields = 'uncompressed_zrd'
         elif self.file_type == 'compressed':
             fields = 'compressed_zrd'
-        s = '';
+        s = ''
         for field in getattr(self,fields):
             s = s + field[0] + ' = ' + str(getattr(self, field[0]))+'\n'
         return '\n' + s + '\n'
@@ -182,7 +184,7 @@ class NSQSource():
         self.power_lumens_in_file = 0
         self.min_wavelength = 0
         self.max_wavelength = 0
-        self.rays = [];
+        self.rays = []
 
     def set_rays(self, x, y, z, l, m, n, intensity, wavelength):
         for ii in range(0,len(x)):
@@ -273,7 +275,7 @@ def readZRDFile(file_name, max_segs_per_ray=1000):
             print("n_segments ({}) > {} at byte-offset position {}. Closing file and"
                   " exiting".format(n_segments, max_segs_per_ray, file_handle.tell() - 4))
             file_handle.close()
-            break;
+            break
         for _ in range(n_segments):
             for field, field_format in fields:
                 format_char = format_dict[field_format]                
@@ -902,3 +904,177 @@ def checkDecimalSeparators(string):
     """
     return _re.sub(r'((?<=\d)|(?<=\A)|(?<=-)|(?<=\s)),(?=\d)', r'.', string)
 
+
+class DetectorData(object):
+    """Class to represent contents of a Zemax detector data file. Requires numpy.
+    """
+    def __init__(self):
+        self.version = None
+        self.type = None
+        self.type_str = ''
+        self.lens_units = None
+        self.lens_units_str = ''
+        self.source_units = None
+        self.source_units_str = ''
+        self.source_multiplier = None
+        self.source_multiplier_val = 1.0
+        self.i_data = None
+        self.d_data = None
+        self.ray_trace_method = None
+        self.ray_trace_method_str = ''
+
+    def read(self, filename):
+        """Read a Zemax detector data file. File types are .ddr, .ddc, .ddp and .ddv.
+        Can read data written using zSaveDetector for rectangular, color, polar or volume detectors.
+ 
+        Parameters
+        ----------
+        filename : str
+            Filename of the detector data to read.
+
+        Returns
+        -------
+        Populated instance of DetectorData object. See the Zemax manual for more information on
+        detector data files. The following attributes can be expected:
+        type : int
+            1, 2, 3, or 4 for Detector Rectangle, Color, Polar, and Volume objects, respectively
+        type_str : str
+            'Rectangle', 'Color', 'Polar' or 'Volume' depending on type
+        lens_units : int
+            0, 1, 2, or 3 for mm, cm, in, or m respectively.
+        lens_units_str: str
+            'mm', 'cm', 'in' or 'm', depending on lens_units.
+        source_units: int
+            0, 1, or 2 for Watts, Lumens, or Joules, respectively.
+        source_units_str: str
+            'W', 'lm' or 'J', depending on source_units.
+        source_multiplier: int
+            0 through 9 for source unit multipliers femto through Tera, respectively.
+        source_multiplier_val: float
+            The source_multiplier as a floating point value.
+        i_data: array of int
+            integer data that is detector type specific (see below).
+        d_data: array of float
+            double precision that is detector type specific (see below).
+
+        Data for Detector Rectangle and Detector Color objects:
+            i_data[0], i_data[1]: number of x pixels, number of y pixels.
+            i_data[2], i_data[3]: number of rays striking the spatial detector, number of rays striking the
+            angular detector.
+            d_data[0], d_data[1]: x half width of the detector, the y half width of the detector.
+            d_data[2] - d_data[5]: angular x minimum, x maximum, y minimum, y maximum.
+
+        Data for Detector Polar Objects:
+            i_data[0], i_data[1]: number of polar pixels, number of angular pixels.
+            i_data[3]: number of rays striking the detector.
+            d_data[0], d_data[1]: maximum angle of the detector, radial size of the detector.
+
+        Data for Detector Volume Objects:
+            i_data[0] - i_data[2]: number of x, y, and z direction pixels.
+            d_data[0] - d_data[2]: half width of the detector in the x, y, and z directions, respectively.
+
+        Notes
+        -----
+        Only reading of rectangular data has been tested. Check your results carefully. In particular,
+        the pixel ordering may not be dealt with correctly.
+        
+        The detector type should conform to the file extension, .ddr, .ddc, .ddp, .ddv for rectangular,
+        color, polar and volume detectors respectively. This is not enforced, but a warning is issued
+        if this convention is violated.
+
+        Binary data is unpacked as little-endian. Padding is dealt with manually, hopefully only occurring
+        in the header between the integer (i_data) and double floating point (d_data) data (4 bytes).
+        """
+        with open(filename, 'rb') as ddata:
+            # Read the header and extract values to instance fields
+            header_buffer = ddata.read(_calcsize('iiiii'))
+            self.header_meta = _unpack('<iiiii', header_buffer)
+            self.version = self.header_meta[0]
+            self.type = self.header_meta[1]
+            self.type_str = ('Unknown', 'Rectangle', 'Color', 'Polar', 'Volume', 'UnknownNew1', 'UnknownNew2')[self.type]
+            self.lens_units = self.header_meta[2]
+            self.lens_units_str = ('mm', 'cm', 'in', 'm')[self.lens_units]
+            self.source_units = self.header_meta[3]
+            self.source_units_str = ('W', 'lm', 'J')[self.source_units]
+            self.source_multiplier = self.header_meta[4]
+            self.source_multiplier_val = (1.e-15, 1.e-12, 1.e-9, 1.e-6, 1.e-3, 1., 1.e3, 1.e6, 1.e9, 1.e12, 1.e15)[self.source_multiplier]
+            # Read the integer data (50 values)
+            header_buffer = ddata.read(_calcsize('i'*50))
+            self.i_data = _np.array(_unpack('<'+'i'*50, header_buffer))
+            # Ditch some padding, not sure why it occurs here, but documented as such in the Zemax manual.
+            ddata.read(4)
+            # Read the floating point (double) data (50 values)
+            header_buffer = ddata.read(_calcsize('d'*50))
+            self.d_data = _np.array(_unpack('<'+'d'*50, header_buffer))
+            # Read the Ray Trace Method
+            header_buffer = ddata.read(_calcsize('i'))
+            self.ray_trace_method = _unpack('<i', header_buffer)[0]
+            if self.ray_trace_method >= 0:
+                self.ray_trace_method_str = ('NotSet', 'LightningTrace', 'NSCRayTrace')[self.ray_trace_method]
+            # Read the actual data, depending on the type of detector
+            if self.type == 1:  # Rectangle detector
+                if _os.path.splitext(filename)[1].lower() != '.ddr':
+                    warnings.warn('File extension for rectangular detector data should be .ddr')
+                self.num_x_pixels = self.i_data[0]
+                self.num_y_pixels = self.i_data[1]
+                self.num_pixels = self.num_x_pixels * self.num_y_pixels
+                self.half_width_x = self.d_data[0]
+                self.half_width_y = self.d_data[1]
+                self.pixel_pitch_x = 2.0 * self.half_width_x / self.num_x_pixels
+                self.pixel_pitch_y = 2.0 * self.half_width_y / self.num_y_pixels
+                # There are 5 fields of double precision data for each pixel
+                data_buffer = ddata.read(_calcsize('d'*5) * self.num_pixels)
+                pixel_data = _np.array(_unpack('<'+'d' * (5*self.num_pixels), data_buffer)).reshape(self.num_pixels, 5)
+                self.inc_int_pos = _np.flipud(pixel_data[:, 0].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.inc_int_ang = _np.flipud(pixel_data[:, 1].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.coh_real = _np.flipud(pixel_data[:, 2].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.coh_imag = _np.flipud(pixel_data[:, 3].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.coh_amp = _np.flipud(pixel_data[:, 4].reshape(self.num_y_pixels, self.num_x_pixels))
+            elif self.type == 2:  # Color detector
+                if _os.path.splitext(filename)[1].lower() != '.ddc':
+                    warnings.warn('File extension for color detector data should be .ddc')                
+                self.num_x_pixels = self.i_data[0]
+                self.num_y_pixels = self.i_data[1]
+                self.num_pixels = self.num_x_pixels * self.num_y_pixels
+                self.half_width_x = self.d_data[0]
+                self.half_width_y = self.d_data[1]
+                self.pixel_pitch_x = 2.0 * self.half_width_x / self.num_x_pixels
+                self.pixel_pitch_y = 2.0 * self.half_width_y / self.num_y_pixels                
+                # There are 8 fields of double precision data for each pixel
+                data_buffer = ddata.read(_calcsize('d'*8) * self.num_pixels)
+                pixel_data = _np.array(_unpack('<'+'d' * (8*self.num_pixels), data_buffer)).reshape(self.num_pixels, 8)
+                self.pos_P = _np.flipud(pixel_data[:, 0].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.pos_X = _np.flipud(pixel_data[:, 1].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.pos_Y = _np.flipud(pixel_data[:, 2].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.pos_Z = _np.flipud(pixel_data[:, 3].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_P = _np.flipud(pixel_data[:, 4].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_X = _np.flipud(pixel_data[:, 5].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_Y = _np.flipud(pixel_data[:, 6].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_Z = _np.flipud(pixel_data[:, 7].reshape(self.num_y_pixels, self.num_x_pixels))
+            elif self.type == 3:  # Polar detector
+                if _os.path.splitext(filename)[1].lower() != '.ddp':
+                    warnings.warn('File extension for polar detector data should be .ddp')                
+                self.num_x_pixels = self.i_data[0]
+                self.num_y_pixels = self.i_data[1]
+                self.num_pixels = self.num_x_pixels * self.num_y_pixels
+                # There are 8 fields of double precision data for each pixel,
+                # but the first four currently have no data. Zemax upgrades may change this.
+                data_buffer = ddata.read(_calcsize('d'*8) * self.num_pixels)
+                pixel_data = _np.array(_unpack('<'+'d' * (8*self.num_pixels), data_buffer)).reshape(self.num_pixels, 8)
+                self.ang_P = _np.flipud(pixel_data[:, 4].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_X = _np.flipud(pixel_data[:, 5].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_Y = _np.flipud(pixel_data[:, 6].reshape(self.num_y_pixels, self.num_x_pixels))
+                self.ang_Z = _np.flipud(pixel_data[:, 7].reshape(self.num_y_pixels, self.num_x_pixels))
+            elif self.type == 4:  # Volume detector
+                if _os.path.splitext(filename)[1].lower() != '.ddv':
+                    warnings.warn('File extension for volume detector data should be .ddv')                
+                self.num_x_pixels = self.i_data[0]
+                self.num_y_pixels = self.i_data[1]
+                self.num_z_pixels = self.i_data[2]
+                self.num_pixels = self.num_x_pixels * self.num_y_pixels * self.num_z_pixels
+                # There are 5 fields of double precision data for each pixel,
+                # but only the first 2 currently have data. Zemax upgrades may change this.
+                data_buffer = ddata.read(_calcsize('d'*5) * self.num_pixels)
+                pixel_data = _np.array(_unpack('<'+'d' * (5*self.num_pixels), data_buffer)).reshape(self.num_pixels, 5)
+                self.inc_int_pos = _np.flipud(pixel_data[:, 0].reshape(self.num_x_pixels, self.num_y_pixels, self.num_z_pixels))
+                self.inc_absorbed_flux = _np.flipud(pixel_data[:, 1].reshape(self.num_y_pixels, self.num_x_pixels, self.num_z_pixels))
