@@ -29,7 +29,14 @@ import re as _re
 import shutil as _shutil
 import warnings as _warnings
 import codecs as _codecs
-import pandas as pd
+# Some functions require pandas, so attempt import
+try:
+    import pandas as _pd
+except ImportError:
+    _global_pd = False
+else:
+    _global_pd = True
+
 
 # Try to import IPython if it is available (for notebook helper functions)
 try:
@@ -6753,7 +6760,7 @@ class PyZDDE(object):
         mfe_data = self.zGetOperandRowList(row_numbers=row_numbers, update=update)
         if not row_numbers:
             row_numbers = range(1, len(mfe_data)+1)
-        mfe_df = pd.DataFrame(mfe_data, index=row_numbers)
+        mfe_df = _pd.DataFrame(mfe_data, index=row_numbers)
         return mfe_df
 
     def zGetOperandCount(self):
@@ -9911,6 +9918,75 @@ class PyZDDE(object):
             return seidelWaveAberrationCoefficients, seidelAberrationCoefficients
         else:
             return None
+
+    @staticmethod
+    def blockToDataFrame(block_data):
+        """Helper function for zGetSeidelAsDataFrame()
+           Converts a block of text data (list of strings) to a pandas DataFrame.
+           If there is a single unnamed column, it is assumed to be a Comment column.
+        """
+        # Attempt a fixed width format read of the the data block
+        block_data_df = _pd.read_fwf(_pd.compat.StringIO('\n'.join(block_data)))
+        # If there is a single unnamed column, assume this is comment
+        df_colnames = block_data_df.keys()
+        unnamed = [n for n, l in enumerate(block_data_df.keys()) if l.startswith('Unnamed')]
+        if len(unnamed) == 1:
+            block_data_df.rename(columns={df_colnames[unnamed[0]]: 'Comment'}, inplace=True)
+            # Replace Nans in the comments column with blank strings
+            block_data_df['Comment'].fillna('', inplace=True)
+        # Make index start from 1 to correspond to surface number
+        block_data_df.index = range(1, len(block_data_df) + 1)
+        return block_data_df
+
+    def zGetSeidelAsDataFrame(self, txtFile=None, keepFile=False):
+        """Return the Seidel Aberration coefficients in pandas DataFrame objects
+
+        Parameters
+        ----------
+        txtFile : string, optional
+            if passed, the seidel text file will be named such. Pass a
+            specific txtFile if you want to dump the file into a separate
+            directory.
+        keepFile : bool, optional
+            if ``False`` (default), the Seidel text file will be deleted
+            after use.
+            If ``True``, the file will persist. If ``keepFile`` is ``True``
+            but a ``txtFile`` is not passed, the Seidel text file will be
+            saved in the same directory as the lens (provided the required
+            folder access permissions are availabl
+
+        Returns
+        -------
+        results : dict of pandas DataFrame objects
+            The keys of the dict will be:
+            ["Seidel Aberration Coefficients", "Seidel Aberration Coefficients in Waves",
+                         "Transverse Aberration Coefficients", "Longitudinal Aberration Coefficients"] 
+
+
+        """
+        settings = _txtAndSettingsToUse(self, txtFile, 'None', 'Sei')
+        textFileName, _, _ = settings
+        ret = self.zGetTextFile(textFileName,'Sei', 'None', 0)
+        assert ret == 0
+        recSystemData = self.zGetSystem() # Get the current system parameters
+        numSurf = recSystemData[0]
+        line_list = _readLinesFromFile(_openFile(textFileName))
+        block_headers = ["Seidel Aberration Coefficients:", "Seidel Aberration Coefficients in Waves:",
+                         "Transverse Aberration Coefficients:", "Longitudinal Aberration Coefficients:"]
+        results = {}
+        for line_num, line in enumerate(line_list):
+            line = line.rstrip()
+            if line in block_headers:
+                block_header = block_headers[block_headers.index(line)]
+                # Extract the block data ..
+                block_data = line_list[line_num+2:line_num+2+numSurf+2]
+                # .. and process into a pandas DataFrame
+                block_data_df = PyZDDE.blockToDataFrame(block_data)
+                results[block_header[:-1]] = block_data_df
+        if not keepFile:
+            _deleteFile(textFileName)
+        return results
+        
 
     def zGetZernike(self, which='fringe', settingsFile=None, txtFile=None,
                      keepFile=False, timeout=5):
