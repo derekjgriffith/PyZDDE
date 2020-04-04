@@ -141,7 +141,7 @@ def zInsertOperand(zln, i_oper, opertype='BLNK', int1=None, int2=None, data1=Non
     return i_oper+1
 
 def mf_gen_reshidko(pzln, n_rings=3, n_arms=6, obs=0.0, symm=True, operands=['TRAX', 'TRAY'], 
-                    op_surfs=None, wv_groups=None, refresh=True, pushback=True, keep_dmfs=False):
+                    op_surfs=None, wv_groups=None, mono_aberr=[], refresh=True, pushback=True, keep_dmfs=False):
     """
     Generate a merit function for chromatic correction based on the second method described
     by Reshidko in
@@ -207,6 +207,17 @@ def mf_gen_reshidko(pzln, n_rings=3, n_arms=6, obs=0.0, symm=True, operands=['TR
         wavelength, forming a single group with all the other wavelengths. This feature
         is intended for optimization of systems that must work well in several
         wavelength regions, typically for different detectors.
+    mono_aberr : list of str
+        This is a list of aberration operands at the image plane to be applied at the
+        primary wavelength(s). Suitable aberration operands to be specified in this list
+        are the operands that Zemax uses in default merit function generation, such as
+        TRCX, TRCY, OPDX, TRAC, TRAD, TRAE, ANCX, ANCY (but not Moore-Elliott ME?? operands).
+        The monochromatic aberration operands are grouped by field position (as required for
+        most of these operands). This facility is intended for "preogressive" Reshidko
+        chromatic aberration correction, where monochromatic correction is maintained
+        at the image plane, while chromatic correction is targeted earlier in the optical
+        train to emphasize glass substitution before that point.
+        Defaut is the empty list.
     refresh : logical
         If set True, will get a lens DDE server refresh using ``pzln.zGetRefresh()``.
         Default is True.
@@ -291,6 +302,7 @@ def mf_gen_reshidko(pzln, n_rings=3, n_arms=6, obs=0.0, symm=True, operands=['TR
     # each.
     i_oper = i_dmfs + 1  # This keeps track of where we are inserting into the merit function
     for i_config in range(1, n_config+1):
+        # Set up the MF operands for Reshidko chromatic correction 
         for (oper_i, operand) in enumerate(operands):
             if n_config > 1:  # Insert the CONF operand, otherwise don't bother
                 i_oper = zInsertOperand(pzln, i_oper, opertype='CONF', int1=i_config)
@@ -317,6 +329,17 @@ def mf_gen_reshidko(pzln, n_rings=3, n_arms=6, obs=0.0, symm=True, operands=['TR
                         # Set up the difference operand
                         i_oper = zInsertOperand(pzln, i_oper, opertype='DIFF', int1=i_oper_ref, int2=i_oper_dif,
                             data1=hx[i_ray], data2=hy[i_ray], data3=px[i_ray], data4=py[i_ray], tgt=0.0, wgt=op_wgt)
+        # Set up monochromatic aberration operands at the image surface
+        for (oper_i, mono_op) in enumerate(mono_aberr):
+            if n_config > 1:  # Insert the CONF operand, otherwise don't bother
+                i_oper = zInsertOperand(pzln, i_oper, opertype='CONF', int1=i_config)
+            for i_ray in range(len(hx)):
+                # Run through the wavelength groups, setting up monochromatic aberration operands
+                op_wgt = lgq_weights[i_ray] * wave_data[1][0]
+                for wv_group in wv_groups:
+                    # Set up the aberration operand at the image plane
+                    i_oper = zInsertOperand(pzln, i_oper, opertype=mono_op, int1=None, int2=wv_group[0],
+                        data1=hx[i_ray], data2=hy[i_ray], data3=px[i_ray], data4=py[i_ray], tgt=0.0, wgt=op_wgt)                
     # Push the lens back to the user foreground.
     if pushback:
         return pzln.zPushLens()
